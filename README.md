@@ -1,6 +1,6 @@
 # CC617x-USMx - Cloud Computing Security
 
-Script on Terraform to use IaC concepts to automate the deploy BallotOnline security improvements and RDS using MySQL configuration
+Script on Terraform to use IaC concepts to automate the deploy of BallotOnline infrastructure taking in consideration improvements on security (WAF), CloudWatch alarms and dashboard with RDS using MySQL with multi-availability zone configuration.
 
 -----
 
@@ -75,6 +75,13 @@ If only the e-mail where the notifications will be has to be defined, type `terr
 
 If in addition to the notifications the amount of default instances must be changed, type `terraform apply -var "minimum=<minimum_instances>" -var "maximum=<maximum_instances> -var "email=<email_address>"`
 
+If you only type `terraform apply` the script will request to you an e-mail address to send the notifications:
+
+   ```bash
+var.email
+  Enter a value:
+   ```
+
 When the following message appears, answer writing `yes`:
 
    ```bash
@@ -85,7 +92,7 @@ When the following message appears, answer writing `yes`:
      Enter a value:
    ```
 
-The script will take some minutes to be executed, and after beeing executed, a message like this will be generated:
+The script will take some minutes to be executed, a message this will be generated at the end of its execution:
 
    ```bash
    Apply complete! Resources: <amount_resources_created> added, 0 changed, 0 destroyed.
@@ -109,16 +116,53 @@ The script will take some minutes to be executed, and after beeing executed, a m
 
 -----
 
-## 7. In order to test the differente WAF rules, the tool `hey` will be used to generate HTTP load to the Application Load Balancer instance recently created. 
+## 9. In order to test the differente WAF rules, the tool `hey` will be used to generate HTTP load to the Application Load Balancer instance recently created. 
 
 In this site appears another OpenSource tools that can be used in further needs `https://awesomeopensource.com/project/denji/awesome-http-benchmark`
 
 On CloudWatch a dashboard will be created that consolidate the metrics used in this project.
 
-To test the requests handled by the Application Load Manager
+To test the requests handled by the Application Load Manager and WAF request passed, type:
 
    ```bash
-   curl <load_balancer_name>
+   hey -z=360s -q 10 -c 4 -m POST http://<application_load_balancer_name>
+   ```
+
+To test the Query argument WAF rule, type:
+
+   ```bash
+   hey -z=360s -q 10 -c 8 -m POST http://<application_load_balancer_name>/?username=123456789ab
+   ```
+
+To test the Word blocked WAF rule, type:
+
+   ```bash
+   hey -z=360s -q 12 -c 10 -m POST "http://<application_load_balancer_name>/?id=617xxixxx&class=123xaxxx"
+   ```
+
+To test the Argument size WAF rule, type:
+
+   ```bash
+   hey -z=360s -q 10 -c 7 -m POST "http://<application_load_balancer_name>/?id=617x&country=united_states_of_america"
+   ```
+
+To test the Regex WAF rule, type:
+
+   ```bash
+   hey -z=180s -q 11 -c 9 -m POST "http://<application_load_balancer_name>/?id=617x&country=bot"
+   hey -z=180s -q 11 -c 9 -m POST "http://<application_load_balancer_name>/?id=617x&country=b0t"
+   hey -z=180s -q 11 -c 9 -m POST "http://<application_load_balancer_name>/?id=617x&country=hAcKeR"
+
+   ```
+
+To test the Own IP WAF rule, there are 2 ways to test it.
+
+The first way is to change your Public IP on the AWS portal -> `WAF & Shield` service on the `IP sets` clic on `Add IP address` and type your public IP.
+
+The other way is editing the file `nano main.tf` and on the section where is defined the resource `aws_wafv2_ip_set` change on `addresses` the IP that appears `["1.1.1.1/32"]` with your public IP, save the file and repeat the step `6` to execute the script to reflect the modifications on the infrastructure.
+
+   ```bash
+   hey -z=360s -q 10 -c 7 -m POST "http://<application_load_balancer_name>"
    ```
 
 -----
