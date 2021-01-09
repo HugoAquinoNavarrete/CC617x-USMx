@@ -1,7 +1,7 @@
 # Script for course CC617x - Cloud Computing Security
 # IaC - BallotOnLine Security
 # USMx - edX
-# December 2020
+# January 2021
 # Hugo Aquino, Panama
 
 # Before execute this script, execute "aws configure" in order to enable 
@@ -26,7 +26,12 @@
 # The first time the script runs, Terraform has be intilized with "terraform apply"
 
 # To run the script type: 
-# terraform apply -var "minimum=<minimum_instances>" -var "maximum=<maximum_instances>"
+
+# If only the e-mail where the notifications will be has to be defined: 
+# terraform apply -var "email=<email_address>"
+
+# If in addition to the notifications the amount of default instances must be changed:
+# terraform apply -var "minimum=<minimum_instances>" -var "maximum=<maximum_instances> -var "email=<email_address>"
 
 # The script will run in Terraform version 0.13
 terraform {
@@ -40,6 +45,10 @@ variable minimum {
 
 variable maximum {
   default = 3
+}
+
+# Variable to define the email where the notifications will be sent
+variable email {
 }
 
 # AWS deployment
@@ -177,6 +186,15 @@ resource "aws_wafv2_regex_pattern_set" "CC617x" {
 
 }
 
+# Define IP Set
+resource "aws_wafv2_ip_set" "own_public_ip" {
+  name               = "OwnPublicIP"
+  description        = "Public IP"
+  scope              = "REGIONAL"
+  ip_address_version = "IPV4"
+  addresses          = ["1.1.1.1/32"]
+}
+
 # Define WAF Rule group
 resource "aws_wafv2_rule_group" "CC617x" {
   description = "CC617x Rule group definition"
@@ -195,7 +213,7 @@ resource "aws_wafv2_rule_group" "CC617x" {
 
     statement {
       geo_match_statement {
-        country_codes = ["MX","DE","NL","CN","IN","IQ","PL","US"]
+        country_codes = ["MX","DE","NL","CN","IN","IQ","PL"]
       }
     }
 
@@ -242,7 +260,7 @@ resource "aws_wafv2_rule_group" "CC617x" {
 
   # Filter by word
   rule {
-    name     = "WordBlock"
+    name     = "WordBlocked"
     priority = 3
 
     action {
@@ -304,6 +322,7 @@ resource "aws_wafv2_rule_group" "CC617x" {
     }
   }
 
+  # Filter by Regular Expression
   rule {
     name     = "RegexFilter"
     priority = 5
@@ -330,6 +349,28 @@ resource "aws_wafv2_rule_group" "CC617x" {
     visibility_config {
       cloudwatch_metrics_enabled = true
       metric_name                = "RegexFilter"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  # Filter by PublicIP
+  rule {
+    name     = "OwnPublicIP"
+    priority = 6
+
+    action {
+      block {}
+    }
+
+    statement {
+        ip_set_reference_statement {       
+           arn = aws_wafv2_ip_set.own_public_ip.arn
+        }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "OwnPublicIP"
       sampled_requests_enabled   = true
     }
   }
@@ -386,6 +427,453 @@ resource "aws_wafv2_web_acl_association" "CC617x" {
   web_acl_arn  = aws_wafv2_web_acl.CC617x.arn
 }
 
+# Create SNS for notifications
+resource "aws_sns_topic" "notification" {
+  name = "notification"
+
+  delivery_policy = <<EOF
+{
+  "http": {
+    "defaultHealthyRetryPolicy": {
+      "minDelayTarget": 20,
+      "maxDelayTarget": 20,
+      "numRetries": 3,
+      "numMaxDelayRetries": 0,
+      "numNoDelayRetries": 0,
+      "numMinDelayRetries": 0,
+      "backoffFunction": "linear"
+    },
+    "disableSubscriptionOverrides": false,
+    "defaultThrottlePolicy": {
+      "maxReceivesPerSecond": 1
+    }
+  }
+}
+EOF
+
+  provisioner "local-exec" {
+    command = "aws sns subscribe --topic-arn ${self.arn} --protocol email --notification-endpoint ${var.email}"
+  }
+}
+
+# Generate alarms in CloudWatch
+
+# ALB request count
+resource "aws_cloudwatch_metric_alarm" "CC617x_RequestCount" {
+  alarm_name          = "CC617x_RequestCount"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = "1"
+  metric_name         = "RequestCount"
+  namespace           = "AWS/ApplicationELB"
+  period              = "60"
+  statistic           = "Sum"
+  threshold           = "1500"
+  alarm_description   = "Alarm generated when request count threshold is exceeded"
+  actions_enabled     = "true"
+  alarm_actions       = [aws_sns_topic.notification.arn]
+
+  dimensions = {
+    TargetGroup  = aws_alb_target_group.alb_target_group.arn_suffix
+    LoadBalancer = aws_alb.alb.arn_suffix
+  }
+
+}
+
+# WAF total passed requests
+resource "aws_cloudwatch_metric_alarm" "CC617x_WAF_passed" {
+  alarm_name          = "CC617x_WAF_passed"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = "1"
+  metric_name         = "PassedRequests"
+  namespace           = "AWS/WAFV2"
+  period              = "60"
+  statistic           = "Average"
+  threshold           = "100"
+  alarm_description   = "Alarm generated when passed threshold is exceeded"
+  actions_enabled     = "true"
+  alarm_actions       = [aws_sns_topic.notification.arn]
+  treat_missing_data  = "missing"
+
+  dimensions = {
+     RuleGroup    = "CC617x"
+     Region       = "us-west-2"
+     Rule         = "ALL"
+  }
+
+}
+
+# WAF total blocked requests
+resource "aws_cloudwatch_metric_alarm" "CC617x_WAF_blocked" {
+  alarm_name          = "CC617x_WAF_blocked"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = "1"
+  metric_name         = "BlockedRequests"
+  namespace           = "AWS/WAFV2"
+  period              = "60"
+  statistic           = "Average"
+  threshold           = "100"
+  alarm_description   = "Alarm generated when blocked threshold is exceeded"
+  actions_enabled     = "true"
+  alarm_actions       = [aws_sns_topic.notification.arn]
+  treat_missing_data  = "missing"
+
+  dimensions = {
+     RuleGroup    = "CC617x"
+     Region       = "us-west-2"
+     Rule         = "ALL"
+  }
+
+}
+
+# Blocked request from "CountryBlocked" rule
+resource "aws_cloudwatch_metric_alarm" "CC617x_WAF_country_blocked" {
+  alarm_name          = "CC617x_WAF_country_blocked"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "1"
+  metric_name         = "BlockedRequests"
+  namespace           = "AWS/WAFV2"
+  period              = "60"
+  statistic           = "Sum"
+  threshold           = "0"
+  alarm_description   = "Alarm generated when country blocked threshold is exceeded"
+  actions_enabled     = "true"
+  alarm_actions       = [aws_sns_topic.notification.arn]
+  treat_missing_data  = "missing"
+
+  dimensions = {
+     RuleGroup    = "CC617x"
+     Region       = "us-west-2"
+     Rule         = "CountryBlocked"
+  }
+
+}
+
+# Blocked request from "QueryArgument" rule
+resource "aws_cloudwatch_metric_alarm" "CC617x_WAF_query_argument" {
+  alarm_name          = "CC617x_WAF_query_argument"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = "1"
+  metric_name         = "BlockedRequests"
+  namespace           = "AWS/WAFV2"
+  period              = "60"
+  statistic           = "Average"
+  threshold           = "35"
+  alarm_description   = "Alarm generated when query argument blocked threshold is exceeded"
+  actions_enabled     = "true"
+  alarm_actions       = [aws_sns_topic.notification.arn]
+  treat_missing_data  = "missing"
+
+  dimensions = {
+     RuleGroup    = "CC617x"
+     Region       = "us-west-2"
+     Rule         = "QueryArgument"
+  }
+
+}
+
+# Blocked request from "WordBlocked" rule
+resource "aws_cloudwatch_metric_alarm" "CC617x_WAF_word_blocked" {
+  alarm_name          = "CC617x_WAF_word_blocked"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = "1"
+  metric_name         = "BlockedRequests"
+  namespace           = "AWS/WAFV2"
+  period              = "60"
+  statistic           = "Average"
+  threshold           = "40"
+  alarm_description   = "Alarm generated when word block argument blocked threshold is exceeded"
+  actions_enabled     = "true"
+  alarm_actions       = [aws_sns_topic.notification.arn]
+  treat_missing_data  = "missing"
+
+  dimensions = {
+     RuleGroup    = "CC617x"
+     Region       = "us-west-2"
+     Rule         = "WordBlocked"
+  }
+
+}
+
+# Blocked request from "ArgumentSize" rule
+resource "aws_cloudwatch_metric_alarm" "CC617x_WAF_argument_size" {
+  alarm_name          = "CC617x_WAF_argument_size"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = "1"
+  metric_name         = "BlockedRequests"
+  namespace           = "AWS/WAFV2"
+  period              = "60"
+  statistic           = "Average"
+  threshold           = "50"
+  alarm_description   = "Alarm generated when argument size blocked threshold is exceeded"
+  actions_enabled     = "true"
+  alarm_actions       = [aws_sns_topic.notification.arn]
+  treat_missing_data  = "missing"
+
+  dimensions = {
+     RuleGroup    = "CC617x"
+     Region       = "us-west-2"
+     Rule         = "ArgumentSize"
+  }
+
+}
+
+# Blocked request from "RegexFilter" rule
+resource "aws_cloudwatch_metric_alarm" "CC617x_WAF_regex_filter" {
+  alarm_name          = "CC617x_WAF_regex_filter"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = "1"
+  metric_name         = "BlockedRequests"
+  namespace           = "AWS/WAFV2"
+  period              = "60"
+  statistic           = "Average"
+  threshold           = "40"
+  alarm_description   = "Alarm generated when regex filter blocked threshold is exceeded"
+  actions_enabled     = "true"
+  alarm_actions       = [aws_sns_topic.notification.arn]
+  treat_missing_data  = "missing"
+
+  dimensions = {
+     RuleGroup    = "CC617x"
+     Region       = "us-west-2"
+     Rule         = "RegexFilter"
+  }
+
+}
+
+# Blocked request from "OwnPublicIP" rule
+resource "aws_cloudwatch_metric_alarm" "CC617x_WAF_own_ip_blocked" {
+  alarm_name          = "CC617x_WAF_own_ip_blocked"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = "1"
+  metric_name         = "BlockedRequests"
+  namespace           = "AWS/WAFV2"
+  period              = "60"
+  statistic           = "Average"
+  threshold           = "20"
+  alarm_description   = "Alarm generated when own ip blocked threshold is exceeded"
+  actions_enabled     = "true"
+  alarm_actions       = [aws_sns_topic.notification.arn]
+  treat_missing_data  = "missing"
+
+  dimensions = {
+     RuleGroup    = "CC617x"
+     Region       = "us-west-2"
+     Rule         = "OwnPublicIP"
+  }
+
+}
+
+# Create a Cloudwatch dashboard
+resource "aws_cloudwatch_dashboard" "CC617x-Dashboard" {
+  dashboard_name = "CC617x-Dashboard"
+
+  dashboard_body = <<EOF
+{
+  "widgets": [
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 0,
+      "width": 12,
+      "height": 4,
+      "properties": {
+        "metrics": [
+          [
+            "AWS/WAFV2",
+            "PassedRequests",
+            "Region",
+            "us-west-2",
+            "Rule",
+            "ALL",
+            "RuleGroup",
+            "CC617x"
+          ]
+        ],
+        "period": 60,
+        "stat": "Average",
+        "region": "us-west-2",
+        "title": "WAF - Passed Requests"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 13,
+      "y": 0,
+      "width": 12,
+      "height": 4,
+      "properties": {
+        "metrics": [
+          [
+            "AWS/WAFV2",
+            "BlockedRequests",
+            "Region",
+            "us-west-2",
+            "Rule",
+            "ALL",
+            "RuleGroup",
+            "CC617x"
+          ]
+        ],
+        "period": 60,
+        "stat": "Average",
+        "region": "us-west-2",
+        "title": "WAF - Blocked Requests"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 5,
+      "width": 12,
+      "height": 4,
+      "properties": {
+        "metrics": [
+          [
+            "AWS/WAFV2",
+            "BlockedRequests",
+            "Region",
+            "us-west-2",
+            "Rule",
+            "CountryBlocked",
+            "RuleGroup",
+            "CC617x"
+          ]
+        ],
+        "period": 60,
+        "stat": "Average",
+        "region": "us-west-2",
+        "title": "WAF - Country Blocked Requests"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 13,
+      "y": 5,
+      "width": 12,
+      "height": 4,
+      "properties": {
+        "metrics": [
+          [
+            "AWS/WAFV2",
+            "BlockedRequests",
+            "Region",
+            "us-west-2",
+            "Rule",
+            "QueryArgument",
+            "RuleGroup",
+            "CC617x"
+          ]
+        ],
+        "period": 60,
+        "stat": "Average",
+        "region": "us-west-2",
+        "title": "WAF - Query Argument Requests"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 10,
+      "width": 12,
+      "height": 4,
+      "properties": {
+        "metrics": [
+          [
+            "AWS/WAFV2",
+            "BlockedRequests",
+            "Region",
+            "us-west-2",
+            "Rule",
+            "WordBlocked",
+            "RuleGroup",
+            "CC617x"
+          ]
+        ],
+        "period": 60,
+        "stat": "Average",
+        "region": "us-west-2",
+        "title": "WAF - Word Blocked Requests"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 13,
+      "y": 10,
+      "width": 12,
+      "height": 4,
+      "properties": {
+        "metrics": [
+          [
+            "AWS/WAFV2",
+            "BlockedRequests",
+            "Region",
+            "us-west-2",
+            "Rule",
+            "ArgumentSize",
+            "RuleGroup",
+            "CC617x"
+          ]
+        ],
+        "period": 60,
+        "stat": "Average",
+        "region": "us-west-2",
+        "title": "WAF - Argument Size Requests"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 15,
+      "width": 12,
+      "height": 4,
+      "properties": {
+        "metrics": [
+          [
+            "AWS/WAFV2",
+            "BlockedRequests",
+            "Region",
+            "us-west-2",
+            "Rule",
+            "RegexFilter",
+            "RuleGroup",
+            "CC617x"
+          ]
+        ],
+        "period": 60,
+        "stat": "Average",
+        "region": "us-west-2",
+        "title": "WAF - Regex Blocked Requests"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 13,
+      "y": 15,
+      "width": 12,
+      "height": 4,
+      "properties": {
+        "metrics": [
+          [
+            "AWS/WAFV2",
+            "BlockedRequests",
+            "Region",
+            "us-west-2",
+            "Rule",
+            "OwnPublicIP",
+            "RuleGroup",
+            "CC617x"
+          ]
+        ],
+        "period": 60,
+        "stat": "Average",
+        "region": "us-west-2",
+        "title": "WAF - Own Public IP Requests"
+      }
+    }
+  ]
+}
+EOF
+}
 
 # Defining RDS with MySQL
 module "db" {
@@ -407,19 +895,16 @@ module "db" {
   port     = "3306"
 
   iam_database_authentication_enabled = false
-
-  multi_az = true
-
-  vpc_security_group_ids = [data.aws_security_group.default.id]
-
-  maintenance_window = "Mon:00:00-Mon:03:00"
-  backup_window      = "03:00-06:00"
-  backup_retention_period = 0
+  multi_az                            = true
+  vpc_security_group_ids              = [data.aws_security_group.default.id]
+  maintenance_window                  = "Mon:00:00-Mon:03:00"
+  backup_window                       = "03:00-06:00"
+  backup_retention_period             = 0
 
   # Enhanced Monitoring - see example for details on how to create the role
   # by yourself, in case you don't want to create it automatically
-  monitoring_interval = "30"
-  monitoring_role_name = "RDSMonitoringRole"
+  monitoring_interval    = "30"
+  monitoring_role_name   = "RDSMonitoringRole"
   create_monitoring_role = true
 
   tags = {
