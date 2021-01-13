@@ -467,7 +467,7 @@ resource "aws_cloudwatch_metric_alarm" "CC617x_RequestCount" {
   namespace           = "AWS/ApplicationELB"
   period              = "60"
   statistic           = "Sum"
-  threshold           = "1500"
+  threshold           = "2500"
   alarm_description   = "Alarm generated when request count threshold is exceeded"
   actions_enabled     = "true"
   alarm_actions       = [aws_sns_topic.notification.arn]
@@ -488,7 +488,7 @@ resource "aws_cloudwatch_metric_alarm" "CC617x_WAF_passed" {
   namespace           = "AWS/WAFV2"
   period              = "60"
   statistic           = "Average"
-  threshold           = "100"
+  threshold           = "40"
   alarm_description   = "Alarm generated when passed threshold is exceeded"
   actions_enabled     = "true"
   alarm_actions       = [aws_sns_topic.notification.arn]
@@ -511,7 +511,7 @@ resource "aws_cloudwatch_metric_alarm" "CC617x_WAF_blocked" {
   namespace           = "AWS/WAFV2"
   period              = "60"
   statistic           = "Average"
-  threshold           = "100"
+  threshold           = "200"
   alarm_description   = "Alarm generated when blocked threshold is exceeded"
   actions_enabled     = "true"
   alarm_actions       = [aws_sns_topic.notification.arn]
@@ -557,7 +557,7 @@ resource "aws_cloudwatch_metric_alarm" "CC617x_WAF_query_argument" {
   namespace           = "AWS/WAFV2"
   period              = "60"
   statistic           = "Average"
-  threshold           = "35"
+  threshold           = "40"
   alarm_description   = "Alarm generated when query argument blocked threshold is exceeded"
   actions_enabled     = "true"
   alarm_actions       = [aws_sns_topic.notification.arn]
@@ -580,7 +580,7 @@ resource "aws_cloudwatch_metric_alarm" "CC617x_WAF_word_blocked" {
   namespace           = "AWS/WAFV2"
   period              = "60"
   statistic           = "Average"
-  threshold           = "40"
+  threshold           = "50"
   alarm_description   = "Alarm generated when word block argument blocked threshold is exceeded"
   actions_enabled     = "true"
   alarm_actions       = [aws_sns_topic.notification.arn]
@@ -626,7 +626,7 @@ resource "aws_cloudwatch_metric_alarm" "CC617x_WAF_regex_filter" {
   namespace           = "AWS/WAFV2"
   period              = "60"
   statistic           = "Average"
-  threshold           = "40"
+  threshold           = "50"
   alarm_description   = "Alarm generated when regex filter blocked threshold is exceeded"
   actions_enabled     = "true"
   alarm_actions       = [aws_sns_topic.notification.arn]
