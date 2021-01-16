@@ -467,7 +467,7 @@ resource "aws_cloudwatch_metric_alarm" "CC617x_RequestCount" {
   namespace           = "AWS/ApplicationELB"
   period              = "60"
   statistic           = "Sum"
-  threshold           = "2500"
+  threshold           = "4500"
   alarm_description   = "Alarm generated when request count threshold is exceeded"
   actions_enabled     = "true"
   alarm_actions       = [aws_sns_topic.notification.arn]
@@ -487,8 +487,8 @@ resource "aws_cloudwatch_metric_alarm" "CC617x_WAF_passed" {
   metric_name         = "PassedRequests"
   namespace           = "AWS/WAFV2"
   period              = "60"
-  statistic           = "Average"
-  threshold           = "40"
+  statistic           = "Sum"
+  threshold           = "4500"
   alarm_description   = "Alarm generated when passed threshold is exceeded"
   actions_enabled     = "true"
   alarm_actions       = [aws_sns_topic.notification.arn]
@@ -510,8 +510,8 @@ resource "aws_cloudwatch_metric_alarm" "CC617x_WAF_blocked" {
   metric_name         = "BlockedRequests"
   namespace           = "AWS/WAFV2"
   period              = "60"
-  statistic           = "Average"
-  threshold           = "200"
+  statistic           = "Sum"
+  threshold           = "20000"
   alarm_description   = "Alarm generated when blocked threshold is exceeded"
   actions_enabled     = "true"
   alarm_actions       = [aws_sns_topic.notification.arn]
@@ -556,8 +556,8 @@ resource "aws_cloudwatch_metric_alarm" "CC617x_WAF_query_argument" {
   metric_name         = "BlockedRequests"
   namespace           = "AWS/WAFV2"
   period              = "60"
-  statistic           = "Average"
-  threshold           = "40"
+  statistic           = "Sum"
+  threshold           = "5000"
   alarm_description   = "Alarm generated when query argument blocked threshold is exceeded"
   actions_enabled     = "true"
   alarm_actions       = [aws_sns_topic.notification.arn]
@@ -579,8 +579,8 @@ resource "aws_cloudwatch_metric_alarm" "CC617x_WAF_word_blocked" {
   metric_name         = "BlockedRequests"
   namespace           = "AWS/WAFV2"
   period              = "60"
-  statistic           = "Average"
-  threshold           = "50"
+  statistic           = "Sum"
+  threshold           = "5000"
   alarm_description   = "Alarm generated when word block argument blocked threshold is exceeded"
   actions_enabled     = "true"
   alarm_actions       = [aws_sns_topic.notification.arn]
@@ -602,8 +602,8 @@ resource "aws_cloudwatch_metric_alarm" "CC617x_WAF_argument_size" {
   metric_name         = "BlockedRequests"
   namespace           = "AWS/WAFV2"
   period              = "60"
-  statistic           = "Average"
-  threshold           = "50"
+  statistic           = "Sum"
+  threshold           = "5000"
   alarm_description   = "Alarm generated when argument size blocked threshold is exceeded"
   actions_enabled     = "true"
   alarm_actions       = [aws_sns_topic.notification.arn]
@@ -625,8 +625,8 @@ resource "aws_cloudwatch_metric_alarm" "CC617x_WAF_regex_filter" {
   metric_name         = "BlockedRequests"
   namespace           = "AWS/WAFV2"
   period              = "60"
-  statistic           = "Average"
-  threshold           = "50"
+  statistic           = "Sum"
+  threshold           = "5000"
   alarm_description   = "Alarm generated when regex filter blocked threshold is exceeded"
   actions_enabled     = "true"
   alarm_actions       = [aws_sns_topic.notification.arn]
@@ -648,8 +648,8 @@ resource "aws_cloudwatch_metric_alarm" "CC617x_WAF_own_ip_blocked" {
   metric_name         = "BlockedRequests"
   namespace           = "AWS/WAFV2"
   period              = "60"
-  statistic           = "Average"
-  threshold           = "20"
+  statistic           = "Sum"
+  threshold           = "5000"
   alarm_description   = "Alarm generated when own ip blocked threshold is exceeded"
   actions_enabled     = "true"
   alarm_actions       = [aws_sns_topic.notification.arn]
@@ -664,8 +664,8 @@ resource "aws_cloudwatch_metric_alarm" "CC617x_WAF_own_ip_blocked" {
 }
 
 # Create a Cloudwatch dashboard
-resource "aws_cloudwatch_dashboard" "CC617x-Dashboard" {
-  dashboard_name = "CC617x-Dashboard"
+resource "aws_cloudwatch_dashboard" "CC617x-dashboard" {
+  dashboard_name = "CC617x-dashboard"
 
   dashboard_body = <<EOF
 {
@@ -690,7 +690,7 @@ resource "aws_cloudwatch_dashboard" "CC617x-Dashboard" {
           ]
         ],
         "period": 60,
-        "stat": "Average",
+        "stat": "Sum",
         "region": "us-west-2",
         "title": "WAF - Passed Requests"
       }
@@ -715,7 +715,7 @@ resource "aws_cloudwatch_dashboard" "CC617x-Dashboard" {
           ]
         ],
         "period": 60,
-        "stat": "Average",
+        "stat": "Sum",
         "region": "us-west-2",
         "title": "WAF - Blocked Requests"
       }
@@ -740,7 +740,7 @@ resource "aws_cloudwatch_dashboard" "CC617x-Dashboard" {
           ]
         ],
         "period": 60,
-        "stat": "Average",
+        "stat": "Sum",
         "region": "us-west-2",
         "title": "WAF - Country Blocked Requests"
       }
@@ -765,7 +765,7 @@ resource "aws_cloudwatch_dashboard" "CC617x-Dashboard" {
           ]
         ],
         "period": 60,
-        "stat": "Average",
+        "stat": "Sum",
         "region": "us-west-2",
         "title": "WAF - Query Argument Requests"
       }
@@ -790,7 +790,7 @@ resource "aws_cloudwatch_dashboard" "CC617x-Dashboard" {
           ]
         ],
         "period": 60,
-        "stat": "Average",
+        "stat": "Sum",
         "region": "us-west-2",
         "title": "WAF - Word Blocked Requests"
       }
@@ -815,7 +815,7 @@ resource "aws_cloudwatch_dashboard" "CC617x-Dashboard" {
           ]
         ],
         "period": 60,
-        "stat": "Average",
+        "stat": "Sum",
         "region": "us-west-2",
         "title": "WAF - Argument Size Requests"
       }
@@ -840,7 +840,7 @@ resource "aws_cloudwatch_dashboard" "CC617x-Dashboard" {
           ]
         ],
         "period": 60,
-        "stat": "Average",
+        "stat": "Sum",
         "region": "us-west-2",
         "title": "WAF - Regex Blocked Requests"
       }
@@ -865,9 +865,32 @@ resource "aws_cloudwatch_dashboard" "CC617x-Dashboard" {
           ]
         ],
         "period": 60,
-        "stat": "Average",
+        "stat": "Sum",
         "region": "us-west-2",
         "title": "WAF - Own Public IP Requests"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 6,
+      "y": 20,
+      "width": 12,
+      "height": 4,
+      "properties": {
+        "metrics": [
+          [
+            "AWS/ApplicationELB",
+            "RequestCount",
+            "LoadBalancer",
+            "app/CC617x-alb/39d2a39be4b8f766",
+            "TargetGroup",
+            "targetgroup/CC617x/aa88591d93df6494"
+          ]
+        ],
+        "period": 60,
+        "stat": "Sum",
+        "region": "us-west-2",
+        "title": "ALB - RequestCount"
       }
     }
   ]
